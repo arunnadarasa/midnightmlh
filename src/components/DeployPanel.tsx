@@ -41,9 +41,8 @@ export function DeployPanel({
       // Attempt to dynamically import MidnightJS SDK. If not installed (5-credit
       // budget), we fall back to the manual paste flow which is the canonical
       // Undeployed path anyway.
-      const contractsMod = await import(
-        /* @vite-ignore */ "@midnight-ntwrk/midnight-js-contracts"
-      ).catch(() => null);
+      const pkg = "@midnight-ntwrk/midnight-js-contracts";
+      const contractsMod = await import(/* @vite-ignore */ pkg).catch(() => null);
       if (!contractsMod) {
         throw new Error(
           "Browser deploy not wired in this build. Run `bun scripts/deploy-midnight.mjs` locally and paste the hex address below.",
