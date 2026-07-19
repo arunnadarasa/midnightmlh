@@ -75,7 +75,8 @@ export function DeployPanel({
       </div>
 
       <p className="text-xs text-muted-foreground">
-        On Undeployed, deploy runs locally with your proof server:{" "}
+        Undeployed node + proof server are hosted on <strong>Fly.io</strong> (see README).
+        Deploy runs from a Codespace or your laptop against the Fly proof server:{" "}
         <code className="font-mono">VITE_NETWORK_ID=undeployed bun scripts/deploy-midnight.mjs</code>
         . Paste the printed hex address here to activate the app.
       </p>

@@ -5,6 +5,8 @@ import { WalletConnectPanel } from "@/components/WalletConnectPanel";
 import { DeployPanel, CONTRACT_STORAGE_KEY } from "@/components/DeployPanel";
 import { PublishKitForm } from "@/components/PublishKitForm";
 import { KitFeed } from "@/components/KitFeed";
+import { ProofServerStatus } from "@/components/ProofServerStatus";
+import { StackStatusBar } from "@/components/StackStatusBar";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -54,8 +56,11 @@ function Header() {
   const expected = (import.meta.env.VITE_NETWORK_ID as string) || "undeployed";
   return (
     <header className="space-y-3">
-      <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground">
-        Midnight · Compact 0.23 · {expected}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground">
+          Midnight · Compact 0.23 · {expected}
+        </div>
+        <ProofServerStatus compact />
       </div>
       <h1 className="text-3xl font-bold tracking-tight">Tokenized Choreo Kits</h1>
       <p className="text-sm text-muted-foreground max-w-2xl">
@@ -108,14 +113,16 @@ function Demo() {
 
 function Footer() {
   return (
-    <footer className="pt-6 border-t border-border space-y-2 text-[11px] text-muted-foreground">
+    <footer className="pt-6 border-t border-border space-y-3 text-[11px] text-muted-foreground">
+      <StackStatusBar />
       <p>
         Built during the <strong>Creative AI &amp; Quantum Hackathon</strong> organised by
         StreetKode Fam during Indian Krump Festival 14.
       </p>
       <p>
-        Runs against a local Midnight standalone stack (node · indexer · proof server).
-        See <code className="font-mono">README.md</code> for the one-command bring-up.
+        Runs against a Midnight <em>undeployed</em> stack hosted on <strong>Fly.io</strong>
+        {" "}(node · indexer · proof server). See <code className="font-mono">README.md</code>
+        {" "}§ &quot;Undeployed on Fly.io&quot; for the exact <code>fly deploy</code> commands.
       </p>
     </footer>
   );
