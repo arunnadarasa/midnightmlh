@@ -1,0 +1,26 @@
+app = "mn-indexer-choreo-kits"
+primary_region = "lhr"
+
+[build]
+  image = "midnightntwrk/indexer-standalone:latest"
+
+[env]
+  # .internal DNS resolves to the sibling Fly app on the private 6PN network.
+  NODE_URL = "ws://mn-node-choreo-kits.internal:9944"
+  LEDGER_STATE_STORAGE_MODE = "sqlite"
+
+[[mounts]]
+  source = "idx_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8088
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = false
+  min_machines_running = 1
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 2
+  memory_mb = 2048

@@ -1,0 +1,30 @@
+app = "mn-node-choreo-kits"
+primary_region = "lhr"
+
+# Pinned to the tag used in Midnight's midnight-local-dev compose.yaml.
+# Update if the standalone stack bumps.
+[build]
+  image = "midnightntwrk/midnight-node:latest"
+
+# Node CLI flags — Fly runs the image's default CMD; the node image accepts
+# these via env. If the image ignores them, wrap in a Dockerfile that appends
+# --chain=undeployed --dev --rpc-external --unsafe-rpc-external --rpc-cors=all
+[env]
+  NODE_CHAIN = "undeployed"
+  RUST_LOG = "info"
+
+[[mounts]]
+  source = "node_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 9944
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = false
+  min_machines_running = 1
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 2
+  memory_mb = 4096
