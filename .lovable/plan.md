@@ -1,124 +1,54 @@
+# Use your Fly.io token to deploy the Midnight `undeployed` stack
 
-# Midnight `undeployed` on Fly.io — reusing your Canton playbook
+You have a Fly API token — perfect. Here's how we'll wire it in without you needing Docker or a laptop.
 
-Confirmed you have working Fly.io experience via the `canton-fly-deploy` skill in **NHS Canton**. Reusing those invariants directly:
-- Stateful nodes → **exactly one Fly machine per app** (`flyctl scale count 1 --yes`)
-- `auto_stop_machines = false`, `min_machines_running = 1`, `force_https = true`
-- `lhr` region default (change if judges are elsewhere)
-- Persist volumes for anything stateful
+## Step 1 — Save the token as a Lovable secret
 
-Lovable Cloud is optional. I'd skip it — nothing here needs a DB, and we already burned budget on the compact contract. If you want, I'll only enable Cloud to add a small AI Gateway "kit critique" server function so the app has a working live feature even if a Fly service hiccups during judging. Say the word.
+Store it as `FLY_API_TOKEN` (Fly's own env-var name — `flyctl` picks it up automatically). Nothing in the frontend touches it; it's only used by shell commands we run for you.
 
-## Architecture (three Fly apps, one org, private 6PN)
+## Step 2 — Deploy the three Fly apps from the Lovable sandbox
 
-```text
-                           ┌─────────────────────────────────┐
-                    ┌─────▶│ mn-node-<slug>.fly.dev :9944    │  midnight-node
-                    │ WSS  │  volume: node_data 10 GB        │  --chain=undeployed --dev
-                    │      │  count=1, min_running=1         │  --rpc-external --rpc-cors=all
-                    │      └────────────┬────────────────────┘
-Lovable app (SSR)   │                   │ ws://mn-node.internal:9944
-  VITE_NODE_WS ─────┘                   ▼
-                    ┌─────────────────────────────────┐
-  VITE_INDEXER_URL ▶│ mn-indexer-<slug>.fly.dev :8088 │  indexer-standalone
-  VITE_INDEXER_WS ▶ │  volume: idx_data 3 GB (SQLite) │  NODE_URL=ws://mn-node.internal:9944
-                    │  count=1, min_running=1         │  path: /api/v3/graphql(+/ws)
-                    └─────────────────────────────────┘
-                    ┌─────────────────────────────────┐
-  VITE_PROOF_SERVER▶│ mn-proof-<slug>.fly.dev  :6300  │  proof-server (stateless)
-                    │  count=1, min_running=1         │
-                    └─────────────────────────────────┘
+Once the token is saved I can run, from the sandbox on your behalf:
+
+```bash
+export FLY_API_TOKEN=$FLY_API_TOKEN
+curl -L https://fly.io/install.sh | sh
+flyctl apps create mn-proof-<slug>
+flyctl apps create mn-node-<slug>
+flyctl apps create mn-indexer-<slug>
+flyctl deploy --config fly.proof.toml
+flyctl deploy --config fly.node.toml     # + volume create
+flyctl deploy --config fly.indexer.toml  # + volume create
+flyctl scale count 1 -a <each-app> --yes
 ```
 
-Sizes (mirroring your Canton `4 GB / shared-2` sizing):
-- node: `shared-cpu-2x`, 4 GB, 10 GB volume (stateful chain DB)
-- indexer: `shared-cpu-2x`, 2 GB, 3 GB volume (SQLite)
-- proof-server: `shared-cpu-2x`, 2 GB, no volume
+I'll materialise the three `fly.*.toml` files (already documented in README) into the repo, pick a `<slug>` (e.g. `choreo-kits`), and run each deploy sequentially so you see the URLs land.
 
-Estimated cost during hackathon window: ~$20–30. Destroy with `fly apps destroy mn-*` at T+24h.
+## Step 3 — Auto-populate the app's env vars
 
-## Reused Canton invariants (verbatim from the skill)
+After each deploy prints a hostname, I'll set the five `VITE_*` values in Project Settings as secrets so the running preview flips its status pills from red → green.
 
-1. **Exactly one machine per app.** `flyctl scale count 1 -a <app> --yes` after every deploy.
-2. **`auto_stop_machines = false` + `min_machines_running = 1`** so nothing cold-starts mid-demo.
-3. **Health-check via 401/200 pattern** — for Midnight, `curl -o /dev/null -w "%{http_code}" https://mn-node-*.fly.dev` behaves the same way.
-4. **Idempotent bootstrap** — pasting the contract address on redeploy is the Midnight equivalent of your DAR re-upload.
-5. **Return raw response bodies on non-2xx** during smoke tests — don't swallow.
+## Step 4 — Deploy the Compact contract
 
-Midnight-specific differences from Canton:
-- No JWT layer. Auth is Lace wallet signatures, not RS256. So no `CANTON_JWT_PRIVATE_KEY` equivalent — one fewer secret to manage.
-- Three apps not one, because Midnight splits node / indexer / proof-server (Canton bundles all three inside the participant).
-- Substrate WS on `:9944` needs `--rpc-external --unsafe-rpc-external --rpc-cors=all` for fly-proxy to terminate WSS.
+The Compact compiler + `bun scripts/deploy-midnight.mjs` still need to run somewhere with the Midnight SDK. Two options:
 
-## Hour-by-hour (T-7 → T-0, phone-only)
+- **A. From the Lovable sandbox** — I try to install the Compact compiler in the sandbox and run the deploy script against your Fly proof server. Fastest for you, but the sandbox may block the installer (same class of restriction Midnight's own skill flags for `get.daml.com` / `compact-installer.sh`). If it does, fall back to B.
+- **B. From a GitHub Codespace on your phone** — you open a Codespace (2 taps in the GitHub mobile web UI), paste the four commands from the README, and paste the hex contract address back into the app.
 
-```text
-T-7:00 → T-6:30  From Samsung: open Fly.io GUI OR a GitHub Codespace
-                 (whichever your guest-house Wi-Fi allows). Install flyctl:
-                 curl -L https://fly.io/install.sh | sh && flyctl auth login
+I'd try A first automatically. If it blocks, I stop and hand you the B instructions.
 
-T-6:30 → T-5:30  Three fly launches (in the shell). Exact commands come
-                 out of the build step. For each app:
-                 - fly launch --no-deploy --image <pinned>
-                 - fly volume create <name> --region lhr --size <N>   (node/indexer)
-                 - fly secrets set (indexer only: NODE_URL)
-                 - fly deploy
-                 - flyctl scale count 1 -a <app> --yes
+## What I need from you before Build mode
 
-T-5:30 → T-5:00  Smoke:
-                 curl https://mn-proof-*.fly.dev/health          → 200
-                 curl -I https://mn-node-*.fly.dev               → 200/400 (WS handshake)
-                 curl -X POST https://mn-indexer-*.fly.dev/api/v3/graphql
-                      -H "content-type: application/json"
-                      -d '{"query":"{__typename}"}'              → 200
+Two quick answers, then approve the plan and I'll execute:
 
-T-5:00 → T-4:30  Wire Lovable env vars (Project Settings → Secrets):
-                 VITE_NETWORK_ID=undeployed
-                 VITE_NODE_WS=wss://mn-node-<slug>.fly.dev
-                 VITE_INDEXER_URL=https://mn-indexer-<slug>.fly.dev/api/v3/graphql
-                 VITE_INDEXER_WS_URL=wss://mn-indexer-<slug>.fly.dev/api/v3/graphql/ws
-                 VITE_PROOF_SERVER_URL=https://mn-proof-<slug>.fly.dev
+1. **Slug** for the three Fly apps? Default: `choreo-kits` → `mn-proof-choreo-kits.fly.dev` etc.
+2. **Region** — keep `lhr` (London) or pick another closer to judges?
 
-T-4:30 → T-3:30  Code changes (small, additive — details below).
-T-3:30 → T-2:30  Compile + deploy the Compact contract from Codespace,
-                 paste hex into DeployPanel, watch KitFeed sync.
-T-2:30 → T-1:00  README rewrite (Fly.io stack) + screen-record demo.
-T-1:00 → T-0:00  Submit.
-```
+## Technical details
 
-## Code changes (all additive, no rewrites)
-
-- `.env.example` — replace `localhost` defaults with `wss://mn-*.fly.dev` template + a commented local block.
-- `src/lib/use-midnight-wallet.ts` — no change; the `undeployed → preview → preprod` fallback already handles Lace network mismatches.
-- `src/components/DeployPanel.tsx` — copy update: "Undeployed node hosted on Fly.io (`mn-node-<slug>.fly.dev`)." Keep the hex-paste flow.
-- **NEW** `src/components/ProofServerStatus.tsx` — 5s poll of `${VITE_PROOF_SERVER_URL}/health`, green/red pill in header + inline near Publish button. If red → banner "Fly proof-server unreachable — proofs will fail. Retry in ~30s."
-- **NEW** `src/components/StackStatusBar.tsx` — footer strip showing all three hostnames with green/red dots. Judges instantly see "this is real infra, not a mock."
-- `README.md` — replace local-Docker section with an **"Undeployed on Fly.io"** section: three `fly.toml` snippets, the exact commands above, env-var mapping, cost estimate, and a `fly apps destroy mn-*` teardown line. Cite the Canton-fly-deploy skill as prior art.
-- No contract changes.
-
-## Optional: Lovable Cloud (only if you want a resilience-boost)
-
-Enable Cloud only to add one AI Gateway server function (`src/lib/critique.functions.ts`) that takes `{ stepCount, tempoBucket, kitTitleHash }` and returns a short "originality critique." This is entirely optional — pure narrative padding for judging. Zero DB, zero auth. Says "Yes" if you want it added in the build pass; otherwise skip.
-
-## Unknowns I still need (or say "you pick")
-
-1. **Image tags** — pin whatever `midnightntwrk/midnight-local-dev`'s compose.yaml uses at HEAD. OK?
-2. **Region** — default `lhr` (matches your Canton setup). Change if judges are elsewhere.
-3. **AI critique server function** — add it or skip? (Requires Cloud enable, no other changes.)
-4. **Codespaces vs Fly GUI** — which is more reliable on the guest-house Wi-Fi? I'll write both paths into the README either way; just tells me which one to lead with.
-
-## Risks and mitigations
-
-- **Substrate WS through fly-proxy** — `--rpc-external --unsafe-rpc-external --rpc-cors=all` are mandatory. First smoke test at T-5:30 confirms.
-- **Indexer schema path drift** — if the pinned image ships `/api/v4/graphql`, we swap the env vars in one edit; the smoke test surfaces it in 30s.
-- **Lace on undeployed via Fly** — desktop Lace pointed at `wss://mn-node-*.fly.dev` works; Lace mobile support for custom WS URLs is unproven. Fallback: screen-record desktop Lace connecting.
-- **Compact compile from phone** — done in the Codespace or a throwaway Fly machine with the compiler image; not on the phone directly.
-- **Cost overrun after event** — teardown one-liner in README: `fly apps destroy mn-node-<slug> mn-indexer-<slug> mn-proof-<slug>`.
-
-## Not doing
-
-- Not enabling Lovable Cloud unless you say yes to the AI critique add-on.
-- Not touching the wallet hook, router shell, or contract source.
-- Not fabricating successful proofs — ProofServerStatus drives an explicit "simulated" banner if the Fly proof-server is red.
-
-Answer the four unknowns (or "you pick, go") and I'll switch to build mode, ship the code changes in one batch, then hand you copy-paste `fly launch / fly deploy` commands you can run from the Samsung.
+- Token stored as `FLY_API_TOKEN` — the exact env var `flyctl` reads, so no wrapper needed.
+- `fly.proof.toml`, `fly.node.toml`, `fly.indexer.toml` will be written to the repo root; they're just the TOML blocks from README §§2–4.
+- Volumes (`node_data` 10 GB, `idx_data` 3 GB) created before first `deploy` so the stateful containers boot clean.
+- `count 1` + `auto_stop_machines=false` + `min_machines_running=1` on every app — mandatory for stateful Midnight nodes (same invariant as the Canton skill).
+- Compact deploy in Step 4 writes to `src/data/midnight-contract.json`; the DeployPanel already reads it.
+- Estimated Fly cost while the stack runs: ~$0.03/hr total ($20/mo if left up).
